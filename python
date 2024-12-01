@@ -1,0 +1,120 @@
+import wmi
+import psutil
+import pandas as pd
+import datetime
+import time
+import random
+
+# Settings
+duration_minutes = 120  # Duration to run the data collection
+sampling_rate_hz = 10  # Samples per second
+num_samples = duration_minutes * 60 * sampling_rate_hz  # Total number of samples
+
+# Initialize WMI client
+w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
+
+# Lists to store data
+timestamps = []
+cpu_temperatures = []
+cpu_usages = []
+cpu_loads = []
+memory_usages = []
+battery_levels = []
+cpu_powers = []
+
+# Collect data
+for i in range(num_samples):
+    try:
+        # Get current timestamp
+        current_time = datetime.datetime.now()
+        timestamps.append(current_time)
+
+        # Get CPU temperature and power
+        sensor_info = w.Sensor()
+        cpu_temp = None
+        cpu_power = None
+        for sensor in sensor_info:
+            if sensor.SensorType == 'Temperature' and 'CPU' in sensor.Name:
+                cpu_temp = sensor.Value
+            if sensor.SensorType == 'Power' and 'CPU Package' in sensor.Name:
+                cpu_power = sensor.Value
+        cpu_temperatures.append(cpu_temp)
+        cpu_powers.append(cpu_power)
+
+        # Get CPU usage
+        cpu_usage = psutil.cpu_percent(interval=1/sampling_rate_hz)
+        cpu_usages.append(cpu_usage)
+
+        # Get CPU load (1-minute average)
+        cpu_load = psutil.getloadavg()[0]
+        cpu_loads.append(cpu_load)
+
+        # Get memory usage
+        memory_usage = psutil.virtual_memory().percent
+        memory_usages.append(memory_usage)
+
+        # Get battery level
+        battery = psutil.sensors_battery()
+        battery_level = battery.percent if battery else None
+        battery_levels.append(battery_level)
+
+        # Introduce anomalies randomly (10% chance for each anomaly)
+        if random.random() < 0.1:
+            cpu_usages[-1] = random.uniform(90, 100)  # High CPU usage
+        if random.random() < 0.1:
+            cpu_temperatures[-1] = random.uniform(90, 105)  # High temperature
+        if random.random() < 0.1:
+            memory_usages[-1] = random.uniform(95, 100)  # High memory usage
+        if random.random() < 0.1:
+            battery_levels[-1] = random.uniform(0, 10)  # Low battery level
+        if random.random() < 0.1:
+            cpu_powers[-1] = random.uniform(50, 100)  # High CPU power
+
+    except Exception as e:
+        print(f"Error collecting data: {e}")
+        cpu_temperatures.append(None)
+        cpu_usages.append(None)
+        cpu_loads.append(None)
+        memory_usages.append(None)
+        battery_levels.append(None)
+        cpu_powers.append(None)
+
+    # Save data to CSV file every 100 samples to reduce memory usage
+    if i > 0 and i % 100 == 0:
+        data = {
+            'timestamp': timestamps,
+            'cpu_temperature': cpu_temperatures,
+            'cpu_usage': cpu_usages,
+            'cpu_load': cpu_loads,
+            'memory_usage': memory_usages,
+            'battery_level': battery_levels,
+            'cpu_power': cpu_powers
+        }
+        df_partial = pd.DataFrame(data)
+        df_partial.to_csv(r'C:\Users\Admin\Downloads\hardware_monitor_data.csv', mode='a', header=(i == 100), index=False)
+        # Clear lists after saving to CSV
+        timestamps.clear()
+        cpu_temperatures.clear()
+        cpu_usages.clear()
+        cpu_loads.clear()
+        memory_usages.clear()
+        battery_levels.clear()
+        cpu_powers.clear()
+
+    # Wait for the next sample
+    time.sleep(1 / sampling_rate_hz)
+
+# Final save of remaining data
+data = {
+    'timestamp': timestamps,
+    'cpu_temperature': cpu_temperatures,
+    'cpu_usage': cpu_usages,
+    'cpu_load': cpu_loads,
+    'memory_usage': memory_usages,
+    'battery_level': battery_levels,
+    'cpu_power': cpu_powers
+}
+df_final = pd.DataFrame(data)
+df_final.to_csv(r'C:\Users\Admin\Downloads\hardware_monitor_data.csv', mode='a', header=False, index=False)
+
+print("Data collection completed and saved to CSV.")
